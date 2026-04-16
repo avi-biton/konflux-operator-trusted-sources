@@ -1,0 +1,7 @@
+# Example shape for --pipelines-file (also produced by scripts/align-onboarding-trusted-sources.sh
+# as onboarding-pipeline-bundles.generated.yaml). Prefer the script so digests stay in sync with Quay.
+pipelines:
+  - name: fbc-builder
+    bundle: quay.io/konflux-ci/tekton-catalog/pipeline-fbc-builder@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: docker-build
+    bundle: quay.io/konflux-ci/tekton-catalog/pipeline-docker-build@sha256:0000000000000000000000000000000000000000000000000000000000000000
