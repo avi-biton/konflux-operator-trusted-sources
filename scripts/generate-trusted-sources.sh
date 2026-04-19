@@ -23,10 +23,10 @@ Optional:
   --help                          Show this message.
 
 Examples:
-  ./generate-trusted-sources.sh \
+  ./scripts/generate-trusted-sources.sh \
     --pipelines-file /path/to/build-pipeline-config.yaml \
     --data-bundles-ref oci::quay.io/konflux-ci/tekton-catalog/data-acceptable-bundles:latest \
-    --output ./trusted-sources.yaml
+    --output ./data/trusted-sources.yaml
 EOF
 }
 
@@ -251,7 +251,8 @@ main() {
 
   local pipeline_refs_file="${work_dir}/pipeline-bundles.txt"
   local task_bundle_refs_file="${work_dir}/task-bundles.txt"
-  local trusted_yaml="${work_dir}/trusted-source-base.yaml"
+  local trusted_yaml_original="${work_dir}/trusted-source-original.yaml"
+  local trusted_yaml_modified="${work_dir}/trusted-source-modified.yaml"
   local idx=0
 
   data_bundles_ref="$(normalize_image_ref "$data_bundles_ref")"
@@ -278,9 +279,10 @@ main() {
   log "Found $(wc -l <"$task_bundle_refs_file" | awk '{print $1}') unique task bundle refs"
 
   log "Fetching trusted_tasks data from: $data_bundles_ref"
-  if ! extract_trusted_yaml_from_data_image "$data_bundles_ref" "${work_dir}/data-image" "$trusted_yaml"; then
+  if ! extract_trusted_yaml_from_data_image "$data_bundles_ref" "${work_dir}/data-image" "$trusted_yaml_original"; then
     die "could not find trusted_tasks YAML in data image: $data_bundles_ref"
   fi
+  cp "$trusted_yaml_original" "$trusted_yaml_modified"
 
   declare -A key_to_digests=()
 
@@ -317,7 +319,7 @@ main() {
 
     # Verify key exists and digest is already in the trusted list.
     local key_exists
-    key_exists="$(KEY="$key" yq -r '.trusted_tasks[strenv(KEY)] != null' "$trusted_yaml")"
+    key_exists="$(KEY="$key" yq -r '.trusted_tasks[strenv(KEY)] != null' "$trusted_yaml_modified")"
     if [[ "$key_exists" != "true" ]]; then
       die "trusted_tasks key not found for pipeline task: ${key}"
     fi
@@ -328,7 +330,7 @@ main() {
         | to_entries
         | map(select(.value.ref == strenv(DIGEST)).key)
         | (.[0] // -1)
-      ' "$trusted_yaml")"
+      ' "$trusted_yaml_modified")"
       if [[ "$current_index" == "-1" ]]; then
         die "pipeline task digest not present in trusted_tasks for key ${key}: ${digest}"
       fi
@@ -347,13 +349,19 @@ main() {
         [ .trusted_tasks[strenv(KEY)][] | select(.ref == strenv(DIGEST)) | del(.expires_on) ] +
         [ .trusted_tasks[strenv(KEY)][] | select(.ref != strenv(DIGEST)) ]
       )
-    ' "$trusted_yaml"
+    ' "$trusted_yaml_modified"
 
     promote_count=$((promote_count + 1))
   done
 
   mkdir -p "$(dirname "$output_file")"
-  cp "$trusted_yaml" "$output_file"
+  cp "$trusted_yaml_modified" "$output_file"
+  local diff_file="${output_file}.diff"
+  if diff -u "$trusted_yaml_original" "$trusted_yaml_modified" >"$diff_file"; then
+    log "No changes in trusted_tasks output relative to source data bundle"
+  else
+    log "Wrote diff file: $diff_file"
+  fi
   log "Wrote output file: $output_file"
   log "Promoted ${promote_count} trusted_tasks entries to non-expiring head refs"
 }
