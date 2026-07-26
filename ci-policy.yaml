@@ -1,0 +1,13 @@
+description: Validate rule data format for the Konflux operator's default EnterpriseContractPolicy.
+sources:
+  - policy:
+      - github.com/conforma/policy//policy/lib
+      - github.com/conforma/policy//policy/release
+    data:
+      - data
+    config:
+      include:
+        - '@policy_data'
+      exclude:
+        - external_parameters.pipeline_run_params_provided
+        - rpm_repos.rule_data_provided

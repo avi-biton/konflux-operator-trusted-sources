@@ -1,10 +1,68 @@
 # Konflux Operator Trusted Sources
 
-This repository stores a generated `data/trusted-sources.yaml` file for Conforma/Enterprise Contract policy data.
+This repository stores Conforma (Enterprise Contract) policy data used by the
+[Konflux operator](https://github.com/konflux-ci/konflux-ci)'s default
+`EnterpriseContractPolicy`. The operator references this data via a git ref in
+its policy manifest.
 
-The goal is to keep trusted task heads aligned with task bundle digests currently referenced by onboarding pipelines.
+## Data files
 
-## Generator script
+The `data/` directory contains rule data consumed by Conforma during policy
+evaluation.
+
+| File | Purpose |
+|------|---------|
+| `trusted_task_rules.yaml` | [ADR 0053](https://github.com/konflux-ci/architecture/blob/main/ADR/0053-trusted-task-model.md) rule-based trust model — allow/deny patterns and version constraints for Tekton tasks. Sets `trusted_task_rules_enabled: true`. |
+| `trusted_task_rules_deprecated.yaml` | Allow/deny rules for deprecated task locations (`integration-service-catalog`, `konflux-vanguard`) during migration to `tekton-catalog`. |
+| `rule_data.yml` | General rule configuration — allowed registries, required labels, informative tests, RPM signature keys. |
+| `required_tasks.yml` | Required tasks for the `docker-build-oci-ta-min` pipeline, including `-min` task variants. |
+| `trusted-sources.yaml` | Legacy digest-based trusted task list (see [Legacy scripts](#legacy-scripts-reference-only) below). |
+
+### Trust model
+
+The new trust model (ADR 0053) replaces the old digest-based "acceptable
+bundles" approach. Instead of matching exact image digests, task trust is
+determined by OCI registry patterns and version constraints defined in
+`trusted_task_rules.yaml`. The `trusted_task_rules_enabled: true` flag
+activates this model.
+
+Tasks from `quay.io/konflux-ci/tekton-catalog/` and
+`quay.io/konflux-ci/integration-service-catalog/` are trusted by default.
+Version-based deny rules in the same file enforce minimum task versions and
+expire old ones on scheduled dates.
+
+### How the operator uses this data
+
+The operator's default `EnterpriseContractPolicy` references this repository
+as a git data source:
+
+```yaml
+sources:
+- data:
+  - github.com/konflux-ci/konflux-operator-trusted-sources//data?ref=<sha-or-branch>
+  config:
+    include:
+    - '@redhat'
+```
+
+Conforma loads all YAML files from the `data/` directory and merges them into
+the policy evaluation context.
+
+### CI validation
+
+A GitHub Actions workflow validates rule data format on every push and PR using
+the Conforma CLI with the `@policy_data` rule collection. See `ci-policy.yaml`
+for the policy configuration.
+
+---
+
+## Legacy scripts (reference only)
+
+> The scripts and `data/trusted-sources.yaml` below predate the ADR 0053
+> rule-based trust model. They are kept for reference but are superseded by
+> `trusted_task_rules.yaml` and related data files described above.
+
+### Generator script
 
 Use `scripts/generate-trusted-sources.sh` to build `data/trusted-sources.yaml` from:
 
@@ -18,7 +76,7 @@ The script:
 3. promotes referenced digests to head entries (index `0`) with no `expires_on`
 4. writes the resulting YAML file
 
-## Prerequisites
+### Prerequisites
 
 - `bash`
 - `skopeo`
@@ -26,7 +84,7 @@ The script:
 - network access to pull pipeline and data bundle images
 - registry auth if required by the source images
 
-## Usage
+### Usage
 
 ```bash
 ./scripts/generate-trusted-sources.sh \
@@ -35,7 +93,7 @@ The script:
   --output ./data/trusted-sources.yaml
 ```
 
-## Align onboarding bundles + regenerate (recommended)
+### Align onboarding bundles + regenerate (recommended)
 
 Use this when you want **one coherent snapshot**: every onboarding pipeline bundle tag equals the same `build-definitions` git revision (the tag pushed to `quay.io/konflux-ci/tekton-catalog/pipeline-*` by CI).
 
@@ -58,7 +116,7 @@ The script writes **`onboarding-pipeline-bundles.generated.yaml`** (gitignored),
 
 See **`onboarding-pipeline-bundles.example.yaml`** for the YAML shape without running the script.
 
-## Example for konflux-ci operator
+### Example for konflux-ci operator
 
 ```bash
 ./scripts/generate-trusted-sources.sh \
@@ -67,7 +125,7 @@ See **`onboarding-pipeline-bundles.example.yaml`** for the YAML shape without ru
   --output ./data/trusted-sources.yaml
 ```
 
-## Input formats for `--pipelines-file`
+### Input formats for `--pipelines-file`
 
 The script accepts any of:
 
@@ -76,7 +134,7 @@ The script accepts any of:
 - YAML sequence of bundle refs
 - plain text file (one bundle ref per line, `#` comments allowed)
 
-## Conflict behavior
+### Conflict behavior
 
 If different pipelines reference different digests for the same `oci://...:tag` key:
 
@@ -85,4 +143,3 @@ If different pipelines reference different digests for the same `oci://...:tag` 
 - logs the candidates and selected digest
 
 This allows generation to complete while preserving validation guarantees.
-

@@ -1,0 +1,27 @@
+name: Validate Policy Data
+
+on:
+  pull_request: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Conforma CLI
+        run: |
+          # TODO: pin to a specific version
+          curl -sLO https://github.com/conforma/cli/releases/latest/download/ec_linux_amd64
+          chmod 755 ec_linux_amd64
+          sudo mv ec_linux_amd64 /usr/local/bin/ec
+          ec version
+
+      - name: Validate rule data format
+        run: |
+          echo '{}' > /tmp/empty-input.json
+          ec validate input /tmp/empty-input.json \
+            --policy ci-policy.yaml \
+            --show-successes \
+            --info \
+            --output yaml
